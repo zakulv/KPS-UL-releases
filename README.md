@@ -73,6 +73,6 @@ Use the **Updates** button inside KPS to check for a newer release. Update packa
 
 ## Source code
 
-KPS is built with Rust, Tauri 2, React, TypeScript, and Windows Raw Input. The application source and technical documentation are available in the [KPS-UL repository](https://github.com/zakulv/KPS-UL).
+KPS is built with Rust, Tauri 2, React, TypeScript, and Windows Raw Input.
 
-If you find a bug, please report it in the source repository with your Windows version, KPS version, and steps to reproduce the problem. Never include passwords, private messages, or other sensitive information in a bug report.
+If you find a bug, please report it with your Windows version, KPS version, and steps to reproduce the problem if possible. Never include passwords, private messages, or other sensitive information in a bug report.
