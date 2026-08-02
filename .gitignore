@@ -1,0 +1,17 @@
+node_modules/
+.pnpm-store/
+dist/
+src-tauri/target/
+.agents/
+.codex/
+DESIGN.md
+PRODUCT.md
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.pfx
+*.p12
+*.log
+.DS_Store

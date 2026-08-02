@@ -1,0 +1,35 @@
+{
+  "name": "kps",
+  "version": "0.2.2",
+  "private": true,
+  "packageManager": "pnpm@11.18.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "test": "node --test tests/settingsMutations.test.ts tests/uiLogic.test.ts tests/uiStructure.test.ts && vitest run --config vitest.config.ts",
+    "test:unit": "node --test tests/settingsMutations.test.ts tests/uiLogic.test.ts tests/uiStructure.test.ts",
+    "test:ui": "vitest run --config vitest.config.ts",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "2.0.0",
+    "@tauri-apps/plugin-updater": "~2.10.1",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.0.0",
+    "@testing-library/jest-dom": "^7.0.0",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/react": "18.3.12",
+    "@types/react-dom": "18.3.1",
+    "@vitejs/plugin-react": "4.3.4",
+    "jsdom": "^30.0.0",
+    "typescript": "5.7.2",
+    "vite": "6.4.2",
+    "vitest": "^4.1.10"
+  }
+}

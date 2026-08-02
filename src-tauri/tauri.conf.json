@@ -1,0 +1,91 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "KPS",
+  "version": "0.2.2",
+  "identifier": "com.kps.keyboard-visualizer",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "KPS",
+        "width": 980,
+        "height": 700,
+        "minWidth": 800,
+        "minHeight": 560,
+        "resizable": true,
+        "decorations": true,
+        "center": true
+      },
+      {
+        "label": "overlay",
+        "title": "KPS Overlay",
+        "url": "index.html",
+        "width": 1000,
+        "height": 450,
+        "minWidth": 320,
+        "minHeight": 120,
+        "resizable": true,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": false,
+        "focus": false,
+        "visible": false,
+        "shadow": false,
+        "center": true
+      },
+      {
+        "label": "obs",
+        "title": "KPS OBS Output",
+        "url": "index.html",
+        "width": 1000,
+        "height": 450,
+        "minWidth": 320,
+        "minHeight": 120,
+        "resizable": true,
+        "decorations": false,
+        "transparent": false,
+        "alwaysOnTop": false,
+        "skipTaskbar": false,
+        "focus": false,
+        "visible": false,
+        "shadow": false,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEYyQzU0Q0I4NDRDRDc4QgpSV1NMMTB5RXkxUXNENy9KaVNzMnFobUVBQkNyMUV0ZTkyOW52QWNkekNldnZoQ0xrNkVaVzVpVAo=",
+      "endpoints": [
+        "https://github.com/zakulv/KPS-UL-releases/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "publisher": "ulv",
+    "createUpdaterArtifacts": true,
+    "icon": [
+      "icons/icon.ico"
+    ],
+    "targets": ["msi"],
+    "windows": {
+      "wix": {
+        "language": "en-US"
+      }
+    }
+  }
+}
