@@ -2,6 +2,8 @@
 
 KPS is a customizable Windows keyboard visualizer for streamers and rhythm-game players. It turns selected physical key presses into a real-time overlay without remapping or injecting input.
 
+![KPS main window](assets/kps-main-window.gif)
+
 ## Availability
 
 Official Windows installers are published on the [Releases page](https://github.com/zakulv/KPS-UL-releases/releases). KPS supports 64-bit Windows 10 and Windows 11.
