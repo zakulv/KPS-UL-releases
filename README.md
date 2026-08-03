@@ -6,7 +6,7 @@ KPS is a customizable Windows keyboard visualizer for streamers and rhythm-game 
 
 ## Availability
 
-Official Windows installers are published on the [Releases page](https://github.com/zakulv/KPS-UL-releases/releases). KPS supports 64-bit Windows 10 and Windows 11.
+Official Windows installers are published on the [Releases page](https://github.com/zakulv/KPS-UL/releases). KPS supports 64-bit Windows 10 and Windows 11.
 
 > Windows may show a SmartScreen warning until the installer has an established reputation or is code-signed. Download installers only from this official repository and verify that the release notes match the version you intend to install.
 
