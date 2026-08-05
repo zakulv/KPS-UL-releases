@@ -1214,9 +1214,11 @@ mod tests {
     #[test]
     fn runtime_snapshots_include_live_capture_and_output_state() {
         let path = test_settings_path("runtime-snapshot-state");
-        let mut settings = AppSettings::default();
-        settings.capture_enabled = true;
-        settings.output_windows_open = true;
+        let settings = AppSettings {
+            capture_enabled: true,
+            output_windows_open: true,
+            ..AppSettings::default()
+        };
         let store = SettingsStore::with_path(settings, path.clone());
 
         let serialized = serde_json::to_value(store.snapshot().expect("snapshot should succeed"))
