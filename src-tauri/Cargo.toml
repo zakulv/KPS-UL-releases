@@ -1,6 +1,6 @@
 [package]
 name = "kps"
-version = "0.2.2"
+version = "0.2.3"
 description = "A lightweight keyboard visualizer for streamers"
 authors = ["ulv"]
 edition = "2021"

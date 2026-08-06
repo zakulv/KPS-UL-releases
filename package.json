@@ -1,13 +1,13 @@
 {
   "name": "kps",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "private": true,
   "packageManager": "pnpm@11.18.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "test": "node --test tests/settingsMutations.test.ts tests/uiLogic.test.ts tests/uiStructure.test.ts && vitest run --config vitest.config.ts",
-    "test:unit": "node --test tests/settingsMutations.test.ts tests/uiLogic.test.ts tests/uiStructure.test.ts",
+    "test": "node --test tests/layoutPresets.test.ts tests/settingsMutations.test.ts tests/uiLogic.test.ts tests/uiStructure.test.ts && vitest run --config vitest.config.ts",
+    "test:unit": "node --test tests/layoutPresets.test.ts tests/settingsMutations.test.ts tests/uiLogic.test.ts tests/uiStructure.test.ts",
     "test:ui": "vitest run --config vitest.config.ts",
     "build": "tsc && vite build",
     "preview": "vite preview",

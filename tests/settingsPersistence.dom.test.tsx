@@ -18,6 +18,25 @@ function profileMutation(): SettingsMutation {
   return { type: "createProfile", name: "New game", processName: "" };
 }
 
+function replacementMutation(): SettingsMutation {
+  return {
+    type: "replaceLayout",
+    layoutKeys: [{
+      id: "key-KeyD",
+      physicalCode: "KeyD",
+      label: "D",
+      x: 50,
+      y: 50,
+      width: null,
+      height: null,
+      appearance: null,
+    }],
+    keySize: 100,
+    kpsX: 50,
+    kpsY: 90,
+  };
+}
+
 beforeEach(() => {
   vi.resetModules();
   vi.useFakeTimers();
@@ -70,5 +89,22 @@ describe("settings persistence queue", () => {
     expect(tauriMocks.invoke).toHaveBeenNthCalledWith(1, "apply_settings_mutation", { mutation: first });
     expect(tauriMocks.invoke).toHaveBeenNthCalledWith(2, "apply_settings_mutation", { mutation: first });
     expect(tauriMocks.invoke).toHaveBeenNthCalledWith(3, "apply_settings_mutation", { mutation: second });
+  });
+
+  test("keeps layout replacement ordered after pending edits", async () => {
+    tauriMocks.invoke.mockResolvedValue(snapshot);
+    const persistence = await import("../src/settingsPersistence");
+    const edit: SettingsMutation = {
+      type: "setLayoutOptions",
+      patch: { keySize: 84 },
+    };
+    const replacement = replacementMutation();
+
+    persistence.scheduleSettingsMutation(edit);
+    await persistence.applySettingsMutation(replacement);
+
+    expect(tauriMocks.invoke).toHaveBeenCalledTimes(2);
+    expect(tauriMocks.invoke).toHaveBeenNthCalledWith(1, "apply_settings_mutation", { mutation: edit });
+    expect(tauriMocks.invoke).toHaveBeenNthCalledWith(2, "apply_settings_mutation", { mutation: replacement });
   });
 });

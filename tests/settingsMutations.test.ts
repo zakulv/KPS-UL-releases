@@ -36,6 +36,7 @@ test("only latest-value mutations are coalesced", async () => {
   assert.match(source, /case "setGlobalAppearance":/);
   assert.match(source, /Creation, deletion, reset, and activation operations are ordered actions/);
   assert.match(source, /return null;/);
+  assert.doesNotMatch(source, /case "replaceLayout":/);
 });
 
 test("failed mutations remain retryable without a frontend settings snapshot", async () => {

@@ -4,7 +4,9 @@ import { readFileSync } from "node:fs";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { AppearancePanel, DEFAULT_SETTINGS, LayoutEditor, OutputSurface, ProfilesPanel } from "../src/App";
-import type { AppSettings, GameProfile } from "../src/types";
+import { LAYOUT_PRESETS, materializeLayoutPreset } from "../src/layoutPresets";
+import { retrySettingsSave } from "../src/settingsPersistence";
+import type { AppSettings, GameProfile, KeyAppearance, SettingsSnapshot } from "../src/types";
 
 const appStyles = readFileSync("src/styles.css", "utf8");
 const OUTPUT_PRESSED_RULE = appStyles.match(
@@ -62,6 +64,31 @@ function copySettings(): AppSettings {
   return structuredClone(DEFAULT_SETTINGS);
 }
 
+function appearanceFromSettings(settings: AppSettings): KeyAppearance {
+  return {
+    accent: settings.accent,
+    keyBackground: settings.keyBackground,
+    keyText: settings.keyText,
+    keyBorder: settings.keyBorder,
+    keyOpacity: settings.keyOpacity,
+    keyRadius: settings.keyRadius,
+    keyBorderWidth: settings.keyBorderWidth,
+    pressedText: settings.pressedText,
+    pressedBorder: settings.pressedBorder,
+    keyFontPreset: settings.keyFontPreset,
+    keyFontSize: settings.keyFontSize,
+    keyFontWeight: settings.keyFontWeight,
+    pressDepth: settings.pressDepth,
+    pressScale: settings.pressScale,
+    pressAnimationMs: settings.pressAnimationMs,
+    minimumHighlightMs: settings.minimumHighlightMs,
+  };
+}
+
+function settingsSnapshot(settings: AppSettings): SettingsSnapshot {
+  return { revision: 2, settings: structuredClone(settings) };
+}
+
 function profileFromSettings(settings: AppSettings): GameProfile {
   return {
     id: "profile-test",
@@ -99,8 +126,8 @@ function profileFromSettings(settings: AppSettings): GameProfile {
   };
 }
 
-function LayoutHarness() {
-  const [settings, setSettings] = useState(copySettings);
+function LayoutHarness({ initialSettings = copySettings() }: { initialSettings?: AppSettings }) {
+  const [settings, setSettings] = useState(() => structuredClone(initialSettings));
   return <LayoutEditor settings={settings} setSettings={setSettings} />;
 }
 
@@ -124,6 +151,7 @@ beforeEach(() => {
   style.textContent = OUTPUT_PRESSED_RULE;
   document.head.append(style);
   tauriMocks.listeners.clear();
+  tauriMocks.invoke.mockReset();
   tauriMocks.invoke.mockResolvedValue(null);
   tauriMocks.outerPosition.mockResolvedValue({ x: 100, y: 200 });
   tauriMocks.setPosition.mockResolvedValue(undefined);
@@ -200,6 +228,114 @@ describe("layout confirmation focus management", () => {
     await waitFor(() => expect(labelInput).toHaveFocus());
     expect(labelInput).toHaveValue("A");
     expect(screen.getByText("A now follows the global key settings.")).toHaveAttribute("role", "status");
+  });
+});
+
+describe("built-in layout presets", () => {
+  test("browses real-renderer previews and confirms replacement while retaining matching styles", async () => {
+    const user = userEvent.setup();
+    const initial = copySettings();
+    initial.overlaySize = { width: 1000, height: 450.4 };
+    const keyD = initial.layoutKeys.find((key) => key.physicalCode === "KeyD");
+    if (!keyD) throw new Error("Default layout should contain KeyD");
+    keyD.appearance = { ...appearanceFromSettings(initial), accent: "#123456" };
+    const preset = LAYOUT_PRESETS.find((item) => item.id === "osu-mania-4k")!;
+    const replacement = materializeLayoutPreset(preset, initial.layoutKeys);
+    const saved = {
+      ...initial,
+      layoutKeys: replacement,
+      selectedKeys: replacement.map((key) => key.physicalCode),
+      keySize: preset.keySize,
+      kpsX: preset.kpsX,
+      kpsY: preset.kpsY,
+    };
+    tauriMocks.invoke.mockResolvedValueOnce(settingsSnapshot(saved));
+    render(<LayoutHarness initialSettings={initial} />);
+
+    const browse = screen.getByRole("button", { name: "Browse presets" });
+    await user.click(browse);
+    expect(browse).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("group", { name: "Built-in layout presets" })).toBeInTheDocument();
+    expect(document.querySelectorAll(".preset-preview .keycap").length).toBeGreaterThan(0);
+    expect(document.querySelector(".preset-preview-canvas")).toHaveAttribute("viewBox", "0 0 1000 450.4");
+    expect(document.querySelector(".preset-preview-stage")).toHaveClass("output-canvas", "overlay");
+    expect(document.querySelector<HTMLElement>(".preset-preview-key")?.style.width).toBe("100px");
+    expect(document.querySelector<HTMLElement>(".preset-preview-key")?.style.height).toBe("100px");
+
+    const maniaOption = screen.getByRole("button", { name: /Mania 4K/ });
+    maniaOption.focus();
+    await user.keyboard("{Enter}");
+    expect(maniaOption).toHaveAttribute("aria-pressed", "true");
+    const apply = screen.getByRole("button", { name: "Apply preset" });
+    await user.click(apply);
+    expect(screen.getByRole("button", { name: "Replace layout" })).toHaveFocus();
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Apply preset" })).toHaveFocus());
+
+    await user.click(screen.getByRole("button", { name: "Apply preset" }));
+    await user.click(screen.getByRole("button", { name: "Replace layout" }));
+
+    await waitFor(() => expect(browse).toHaveFocus());
+    expect(screen.queryByRole("group", { name: "Built-in layout presets" })).not.toBeInTheDocument();
+    expect(screen.getByText("Mania 4K applied. Matching key styles were kept.")).toHaveAttribute("role", "status");
+    expect(tauriMocks.invoke).toHaveBeenCalledWith("apply_settings_mutation", {
+      mutation: {
+        type: "replaceLayout",
+        layoutKeys: replacement,
+        keySize: 100,
+        kpsX: 50,
+        kpsY: 90,
+      },
+    });
+    expect(replacement.find((key) => key.physicalCode === "KeyD")?.appearance?.accent).toBe("#123456");
+    expect(replacement.find((key) => key.physicalCode === "KeyF")?.appearance).toBeNull();
+  });
+
+  test("applies directly when the current layout is empty", async () => {
+    const user = userEvent.setup();
+    const initial = { ...copySettings(), layoutKeys: [], selectedKeys: [] };
+    const preset = LAYOUT_PRESETS.find((item) => item.id === "wasd-movement")!;
+    const replacement = materializeLayoutPreset(preset);
+    const saved = {
+      ...initial,
+      layoutKeys: replacement,
+      selectedKeys: replacement.map((key) => key.physicalCode),
+      keySize: preset.keySize,
+      kpsX: preset.kpsX,
+      kpsY: preset.kpsY,
+    };
+    tauriMocks.invoke.mockResolvedValueOnce(settingsSnapshot(saved));
+    render(<LayoutHarness initialSettings={initial} />);
+
+    await user.click(screen.getByRole("button", { name: "Browse presets" }));
+    await user.click(screen.getByRole("button", { name: /WASD movement/ }));
+    await user.click(screen.getByRole("button", { name: "Apply preset" }));
+
+    await waitFor(() => expect(screen.getByText("WASD movement applied. Matching key styles were kept.")).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: "Replace layout" })).not.toBeInTheDocument();
+    expect(tauriMocks.invoke).toHaveBeenCalledWith("apply_settings_mutation", {
+      mutation: expect.objectContaining({ type: "replaceLayout", layoutKeys: replacement }),
+    });
+  });
+
+  test("keeps the current layout visible when replacement persistence fails", async () => {
+    const user = userEvent.setup();
+    const initial = copySettings();
+    tauriMocks.invoke.mockRejectedValueOnce(new Error("settings file is locked"));
+    render(<LayoutHarness initialSettings={initial} />);
+
+    await user.click(screen.getByRole("button", { name: "Browse presets" }));
+    await user.click(screen.getByRole("button", { name: /Mania 4K/ }));
+    await user.click(screen.getByRole("button", { name: "Apply preset" }));
+    await user.click(screen.getByRole("button", { name: "Replace layout" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not apply Mania 4K: settings file is locked");
+    expect(screen.getByRole("group", { name: "Built-in layout presets" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Configured keys").querySelectorAll(".configured-key")).toHaveLength(8);
+
+    tauriMocks.invoke.mockResolvedValueOnce(settingsSnapshot(initial));
+    await retrySettingsSave();
   });
 });
 
