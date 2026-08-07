@@ -504,6 +504,12 @@ pub enum SettingsMutation {
     },
     ClearKeys,
     ResetKeys,
+    ReplaceLayout {
+        layout_keys: Vec<LayoutKey>,
+        key_size: u32,
+        kps_x: f64,
+        kps_y: f64,
+    },
     SetKeyLabel {
         id: String,
         label: String,
@@ -811,6 +817,20 @@ impl AppSettings {
             }
             SettingsMutation::ResetKeys => {
                 self.layout_keys = layout_from_codes(&DEFAULT_KEYS);
+            }
+            SettingsMutation::ReplaceLayout {
+                layout_keys,
+                key_size,
+                kps_x,
+                kps_y,
+            } => {
+                if layout_keys.is_empty() {
+                    return Err("A layout preset must contain at least one key".to_string());
+                }
+                self.layout_keys = layout_keys;
+                self.key_size = key_size;
+                self.kps_x = kps_x;
+                self.kps_y = kps_y;
             }
             SettingsMutation::SetKeyLabel { id, label } => {
                 let key = self
@@ -1389,7 +1409,7 @@ pub struct KeyPressPulse {
 
 #[cfg(test)]
 mod tests {
-    use super::{AppSettings, GameProfile, KeyAppearance, SettingsMutation};
+    use super::{AppSettings, GameProfile, KeyAppearance, LayoutKey, SettingsMutation};
 
     #[test]
     fn settings_mutations_deserialize_camel_case_variant_fields() {
@@ -1405,6 +1425,23 @@ mod tests {
             "processName": "rhythm.exe"
         }))
         .expect("target mutation should deserialize");
+        let replacement: SettingsMutation = serde_json::from_value(serde_json::json!({
+            "type": "replaceLayout",
+            "layoutKeys": [{
+                "id": "key-KeyD",
+                "physicalCode": "KeyD",
+                "label": "D",
+                "x": 50.0,
+                "y": 50.0,
+                "width": null,
+                "height": null,
+                "appearance": null
+            }],
+            "keySize": 100,
+            "kpsX": 50.0,
+            "kpsY": 90.0
+        }))
+        .expect("layout replacement mutation should deserialize");
 
         assert!(matches!(
             create,
@@ -1419,6 +1456,15 @@ mod tests {
                 enabled: true,
                 process_name: Some(ref process_name),
             } if process_name == "rhythm.exe"
+        ));
+        assert!(matches!(
+            replacement,
+            SettingsMutation::ReplaceLayout {
+                layout_keys,
+                key_size: 100,
+                kps_x,
+                kps_y,
+            } if layout_keys.len() == 1 && kps_x == 50.0 && kps_y == 90.0
         ));
     }
 
@@ -1483,6 +1529,141 @@ mod tests {
 
         assert!(settings.layout_keys.is_empty());
         assert!(settings.selected_keys.is_empty());
+    }
+
+    #[test]
+    fn replaces_a_layout_and_preserves_unrelated_settings() {
+        let mut settings = AppSettings::default();
+        settings.normalize();
+        settings.accent = "#123456".to_string();
+        settings.obs_key_color = "#112233".to_string();
+        settings.show_kps = false;
+        settings.snap_to_grid = false;
+        settings.target_process = Some("game.exe".to_string());
+
+        let appearance = KeyAppearance {
+            accent: "#abcdef".to_string(),
+            ..KeyAppearance::default()
+        };
+        let replacement = vec![
+            LayoutKey {
+                id: "key-KeyD".to_string(),
+                physical_code: "KeyD".to_string(),
+                label: "D".to_string(),
+                x: 130.0,
+                y: -12.0,
+                width: None,
+                height: None,
+                appearance: Some(appearance),
+            },
+            LayoutKey {
+                id: "duplicate-KeyD".to_string(),
+                physical_code: "KeyD".to_string(),
+                label: "Duplicate".to_string(),
+                x: 40.0,
+                y: 40.0,
+                width: None,
+                height: None,
+                appearance: None,
+            },
+        ];
+
+        settings
+            .apply_mutation(SettingsMutation::ReplaceLayout {
+                layout_keys: replacement,
+                key_size: 240,
+                kps_x: 120.0,
+                kps_y: -10.0,
+            })
+            .expect("layout replacement should succeed");
+        settings.normalize();
+        settings.sync_active_profile();
+
+        assert_eq!(settings.selected_keys, vec!["KeyD"]);
+        assert_eq!(settings.layout_keys.len(), 1);
+        assert_eq!(settings.layout_keys[0].x, 100.0);
+        assert_eq!(settings.layout_keys[0].y, 0.0);
+        assert_eq!(settings.key_size, 200);
+        assert_eq!(settings.kps_x, 100.0);
+        assert_eq!(settings.kps_y, 0.0);
+        assert_eq!(
+            settings.layout_keys[0].appearance.as_ref().unwrap().accent,
+            "#ABCDEF"
+        );
+        assert_eq!(settings.accent, "#123456");
+        assert_eq!(settings.obs_key_color, "#112233");
+        assert!(!settings.show_kps);
+        assert!(!settings.snap_to_grid);
+        assert_eq!(settings.target_process.as_deref(), Some("game.exe"));
+        assert_eq!(settings.settings_version, 9);
+        assert_eq!(
+            settings
+                .default_profile
+                .as_ref()
+                .expect("default profile should be synchronized")
+                .layout_keys[0]
+                .physical_code,
+            "KeyD"
+        );
+    }
+
+    #[test]
+    fn rejects_an_empty_layout_replacement_without_changing_the_current_layout() {
+        let mut settings = AppSettings::default();
+        let original_layout = settings.layout_keys.clone();
+
+        let error = settings
+            .apply_mutation(SettingsMutation::ReplaceLayout {
+                layout_keys: Vec::new(),
+                key_size: 100,
+                kps_x: 50.0,
+                kps_y: 90.0,
+            })
+            .expect_err("empty preset layouts should be rejected");
+
+        assert_eq!(error, "A layout preset must contain at least one key");
+        assert_eq!(settings.layout_keys.len(), original_layout.len());
+        assert_eq!(
+            settings.layout_keys[0].physical_code,
+            original_layout[0].physical_code
+        );
+    }
+
+    #[test]
+    fn synchronizes_replaced_layouts_to_the_active_game_profile() {
+        let mut settings = AppSettings::default();
+        settings.normalize();
+        settings
+            .apply_mutation(SettingsMutation::CreateProfile {
+                name: Some("osu!mania".to_string()),
+                process_name: Some("osu!.exe".to_string()),
+            })
+            .expect("profile creation should succeed");
+
+        settings
+            .apply_mutation(SettingsMutation::ReplaceLayout {
+                layout_keys: vec![LayoutKey {
+                    id: "key-Space".to_string(),
+                    physical_code: "Space".to_string(),
+                    label: "SPACE".to_string(),
+                    x: 50.0,
+                    y: 50.0,
+                    width: Some(140),
+                    height: Some(100),
+                    appearance: None,
+                }],
+                key_size: 100,
+                kps_x: 50.0,
+                kps_y: 90.0,
+            })
+            .expect("layout replacement should succeed");
+        settings.normalize();
+        settings.sync_active_profile();
+
+        assert_eq!(settings.profiles.len(), 1);
+        assert_eq!(settings.profiles[0].layout_keys.len(), 1);
+        assert_eq!(settings.profiles[0].layout_keys[0].physical_code, "Space");
+        assert_eq!(settings.profiles[0].selected_keys, vec!["Space"]);
     }
 
     #[test]

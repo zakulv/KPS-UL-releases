@@ -219,7 +219,7 @@ test("clearing all configured keys requires an explicit inline confirmation", as
   const source = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
   const styles = await readFile(new URL("../src/styles.css", import.meta.url), "utf8");
 
-  assert.match(source, /onClick=\{\(\) => setClearConfirmationCount\(settings\.layoutKeys\.length\)\}[\s\S]*?Clear all/);
+  assert.match(source, /onClick=\{\(\) => \{[\s\S]*?setClearConfirmationCount\(settings\.layoutKeys\.length\);[\s\S]*?Clear all/);
   assert.match(source, /onClick=\{clearAllKeys\} autoFocus>Clear all keys</);
   assert.match(source, /aria-label="Confirm clearing all configured keys"/);
   assert.match(source, /type: "clearKeys"/);
@@ -227,6 +227,27 @@ test("clearing all configured keys requires an explicit inline confirmation", as
   assert.match(source, /setClearConfirmationCount\(null\)/);
   assert.match(styles, /\.clear-keys-confirmation \{/);
   assert.match(styles, /\.danger-button:disabled \{/);
+});
+
+test("layout presets use an expandable accessible browser and real key rendering", async () => {
+  const source = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
+  const styles = await readFile(new URL("../src/styles.css", import.meta.url), "utf8");
+  const types = await readFile(new URL("../src/types.ts", import.meta.url), "utf8");
+
+  assert.match(types, /export interface LayoutPreset/);
+  assert.match(types, /type: "replaceLayout"/);
+  assert.match(source, /aria-expanded=\{presetsOpen\}/);
+  assert.match(source, /aria-controls="layout-preset-browser"/);
+  assert.match(source, /role="group" aria-label="Built-in layout presets"/);
+  assert.match(source, /className="keycap preset-preview-key"/);
+  assert.match(source, /className="output-canvas overlay preset-preview-stage"/);
+  assert.match(source, /viewBox=\{`0 0 \$\{outputSize\.width\} \$\{outputSize\.height\}`\}/);
+  assert.match(source, /Matching keys keep their individual appearance\./);
+  assert.match(styles, /\.preset-preview-canvas \{ display: block; width: 100%; height: 100%; \}/);
+  assert.match(styles, /\.preset-grid \{ display: grid; grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/);
+  assert.match(styles, /@media \(max-width: 640px\)[\s\S]*?\.preset-grid \{ grid-template-columns: 1fr; \}/);
+  assert.match(styles, /@media \(pointer: coarse\)[\s\S]*?\.preset-option \{ min-height: 44px; \}/);
+  assert.match(styles, /@media \(forced-colors: active\)[\s\S]*?\.preset-option\.selected/);
 });
 
 test("destructive layout and appearance resets require inline confirmation", async () => {

@@ -30,6 +30,26 @@ export interface LayoutKey {
   appearance: KeyAppearance | null;
 }
 
+export interface LayoutPresetKey {
+  physicalCode: string;
+  label: string;
+  x: number;
+  y: number;
+  width: number | null;
+  height: number | null;
+}
+
+export interface LayoutPreset {
+  id: string;
+  name: string;
+  description: string;
+  category: "Rhythm" | "Movement";
+  keySize: number;
+  kpsX: number;
+  kpsY: number;
+  keys: readonly LayoutPresetKey[];
+}
+
 export interface WindowPosition {
   x: number;
   y: number;
@@ -157,6 +177,13 @@ export type SettingsMutation =
   | { type: "removeKey"; id: string }
   | { type: "clearKeys" }
   | { type: "resetKeys" }
+  | {
+      type: "replaceLayout";
+      layoutKeys: LayoutKey[];
+      keySize: number;
+      kpsX: number;
+      kpsY: number;
+    }
   | { type: "setKeyLabel"; id: string; label: string }
   | { type: "setKeySize"; id: string; width: number; height: number }
   | { type: "clearKeySize"; id: string }

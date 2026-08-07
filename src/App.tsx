@@ -23,6 +23,7 @@ import {
   subscribeSettingsSaveStatus,
   type SettingsSaveStatus,
 } from "./settingsPersistence";
+import { LAYOUT_PRESETS, materializeLayoutPreset } from "./layoutPresets";
 import type {
   AppearancePatch,
   AppSettings,
@@ -31,6 +32,7 @@ import type {
   KeyPressPulse,
   KeyStateSnapshot,
   LayoutKey,
+  LayoutPreset,
   OutputMode,
   RuntimeInfo,
   SettingsMutation,
@@ -54,19 +56,7 @@ import {
 
 const APP_VERSION = packageInfo.version;
 
-const DEFAULT_LAYOUT: LayoutKey[] = [
-  ["KeyA", "A"], ["KeyS", "S"], ["KeyD", "D"], ["KeyF", "F"],
-  ["KeyJ", "J"], ["KeyK", "K"], ["KeyL", "L"], ["Semicolon", ";"],
-].map(([physicalCode, label], index, keys) => ({
-  id: `key-${physicalCode}`,
-  physicalCode,
-  label,
-  x: (100 / (keys.length - 1)) * index,
-  y: 50,
-  width: null,
-  height: null,
-  appearance: null,
-}));
+const DEFAULT_LAYOUT = materializeLayoutPreset(LAYOUT_PRESETS[0]);
 
 const DEFAULT_KEYS = DEFAULT_LAYOUT.map((key) => key.physicalCode);
 const KPS_ITEM_ID = "__kps-counter__";
@@ -760,6 +750,73 @@ export function OutputSurface({ surface }: { surface: "overlay" | "obs" }) {
   );
 }
 
+const DEFAULT_PRESET_PREVIEW_SIZE = { width: 1000, height: 450 } as const;
+
+function presetPreviewOutputSize(settings: AppSettings) {
+  const preferredSize = settings.outputMode === "obs" ? settings.obsSize : settings.overlaySize;
+  const size = preferredSize ?? settings.overlaySize ?? settings.obsSize;
+  if (
+    !size
+    || !Number.isFinite(size.width)
+    || !Number.isFinite(size.height)
+    || size.width <= 0
+    || size.height <= 0
+  ) {
+    return DEFAULT_PRESET_PREVIEW_SIZE;
+  }
+  return size;
+}
+
+function PresetPreview({ preset, settings }: { preset: LayoutPreset; settings: AppSettings }) {
+  const outputSize = presetPreviewOutputSize(settings);
+
+  return (
+    <span
+      className="preset-preview"
+      aria-hidden="true"
+      style={{ aspectRatio: `${outputSize.width} / ${outputSize.height}` }}
+    >
+      <svg
+        className="preset-preview-canvas"
+        viewBox={`0 0 ${outputSize.width} ${outputSize.height}`}
+        preserveAspectRatio="xMidYMid meet"
+        focusable="false"
+      >
+        <foreignObject width={outputSize.width} height={outputSize.height}>
+          <div
+            className="output-canvas overlay preset-preview-stage"
+            style={{ width: `${outputSize.width}px`, height: `${outputSize.height}px` }}
+          >
+            {preset.keys.map((key) => {
+              const width = key.width ?? preset.keySize;
+              const height = key.height ?? preset.keySize;
+              const style = {
+                ...outputItemStyle(key.x, key.y, width, height, settings, "overlay"),
+                "--press-depth": "0px",
+                "--press-duration": "0ms",
+              } as CSSProperties;
+              return <span className="keycap preset-preview-key" style={style} key={key.physicalCode}><span>{key.label}</span></span>;
+            })}
+            <span
+              className="kps-readout preset-preview-kps"
+              style={outputItemStyle(
+                preset.kpsX,
+                preset.kpsY,
+                KPS_WIDTH,
+                KPS_HEIGHT,
+                settings,
+                "overlay",
+              )}
+            >
+              <span className="kps-value">0</span><span className="kps-label">KPS</span>
+            </span>
+          </div>
+        </foreignObject>
+      </svg>
+    </span>
+  );
+}
+
 type LayoutEditorProps = {
   settings: AppSettings;
   setSettings: Dispatch<SetStateAction<AppSettings>>;
@@ -771,8 +828,15 @@ export function LayoutEditor({ settings, setSettings }: LayoutEditorProps) {
   const [clearConfirmationCount, setClearConfirmationCount] = useState<number | null>(null);
   const [resetKeysConfirmationCount, setResetKeysConfirmationCount] = useState<number | null>(null);
   const [resetKeyConfirmationId, setResetKeyConfirmationId] = useState<string | null>(null);
+  const [presetsOpen, setPresetsOpen] = useState(false);
+  const [selectedPresetId, setSelectedPresetId] = useState(LAYOUT_PRESETS[0].id);
+  const [pendingPresetId, setPendingPresetId] = useState<string | null>(null);
+  const [applyingPreset, setApplyingPreset] = useState(false);
+  const [presetError, setPresetError] = useState<string | null>(null);
   const [editorMessage, setEditorMessage] = useState("Select a key to change its label or size.");
   const settingsRef = useRef(settings);
+  const browsePresetsButtonRef = useRef<HTMLButtonElement>(null);
+  const applyPresetButtonRef = useRef<HTMLButtonElement>(null);
   const clearKeysButtonRef = useRef<HTMLButtonElement>(null);
   const resetKeysButtonRef = useRef<HTMLButtonElement>(null);
   const resetKeyButtonRef = useRef<HTMLButtonElement>(null);
@@ -788,6 +852,8 @@ export function LayoutEditor({ settings, setSettings }: LayoutEditorProps) {
   useEffect(() => {
     setClearConfirmationCount(null);
     setResetKeysConfirmationCount(null);
+    setPendingPresetId(null);
+    setPresetError(null);
   }, [settings.activeProfileId, settings.layoutKeys.length]);
 
   useEffect(() => {
@@ -891,6 +957,72 @@ export function LayoutEditor({ settings, setSettings }: LayoutEditorProps) {
     window.requestAnimationFrame(() => resetKeysButtonRef.current?.focus());
   };
 
+  const selectedPreset = LAYOUT_PRESETS.find((preset) => preset.id === selectedPresetId)
+    ?? LAYOUT_PRESETS[0];
+
+  const togglePresetBrowser = () => {
+    setPresetsOpen((open) => !open);
+    setPendingPresetId(null);
+    setPresetError(null);
+  };
+
+  const closePresetBrowser = () => {
+    setPresetsOpen(false);
+    setPendingPresetId(null);
+    setPresetError(null);
+    window.requestAnimationFrame(() => browsePresetsButtonRef.current?.focus());
+  };
+
+  const choosePreset = (presetId: string) => {
+    setSelectedPresetId(presetId);
+    setPendingPresetId(null);
+    setPresetError(null);
+  };
+
+  const applyPreset = async (preset: LayoutPreset) => {
+    const current = settingsRef.current;
+    const layoutKeys = materializeLayoutPreset(preset, current.layoutKeys);
+    setApplyingPreset(true);
+    setPresetError(null);
+    try {
+      const snapshot = await applySettingsMutation({
+        type: "replaceLayout",
+        layoutKeys,
+        keySize: preset.keySize,
+        kpsX: preset.kpsX,
+        kpsY: preset.kpsY,
+      });
+      if (!snapshot) throw new Error("KPS did not return the saved layout.");
+      settingsRef.current = snapshot.settings;
+      setSettings(snapshot.settings);
+      setSelectedKeyId(snapshot.settings.layoutKeys[0]?.id ?? null);
+      setCapturingKey(false);
+      setPendingPresetId(null);
+      setPresetsOpen(false);
+      setEditorMessage(`${preset.name} applied. Matching key styles were kept.`);
+      window.requestAnimationFrame(() => browsePresetsButtonRef.current?.focus());
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      setPresetError(`Could not apply ${preset.name}: ${detail}`);
+      setEditorMessage(`${preset.name} was not applied. Use Retry after resolving the save problem.`);
+    } finally {
+      setApplyingPreset(false);
+    }
+  };
+
+  const requestPresetApplication = () => {
+    if (settingsRef.current.layoutKeys.length > 0) {
+      setPendingPresetId(selectedPreset.id);
+      return;
+    }
+    void applyPreset(selectedPreset);
+  };
+
+  const cancelPresetApplication = () => {
+    setPendingPresetId(null);
+    window.requestAnimationFrame(() => applyPresetButtonRef.current?.focus());
+  };
+
   const updateSelectedKey = (changes: Partial<LayoutKey>, immediate = false) => {
     if (!selectedKeyId) return;
     const currentKey = settingsRef.current.layoutKeys.find((key) => key.id === selectedKeyId);
@@ -980,9 +1112,22 @@ export function LayoutEditor({ settings, setSettings }: LayoutEditorProps) {
           <div className="editor-toolbar-actions">
             <button
               type="button"
+              className={presetsOpen ? "quiet-button active" : "quiet-button"}
+              ref={browsePresetsButtonRef}
+              onClick={togglePresetBrowser}
+              aria-expanded={presetsOpen}
+              aria-controls="layout-preset-browser"
+            >
+              Browse presets
+            </button>
+            <button
+              type="button"
               className="quiet-button"
               ref={resetKeysButtonRef}
-              onClick={() => setResetKeysConfirmationCount(settings.layoutKeys.length)}
+              onClick={() => {
+                setPresetsOpen(false);
+                setResetKeysConfirmationCount(settings.layoutKeys.length);
+              }}
             >
               Reset keys
             </button>
@@ -991,7 +1136,10 @@ export function LayoutEditor({ settings, setSettings }: LayoutEditorProps) {
               className="danger-button"
               ref={clearKeysButtonRef}
               disabled={settings.layoutKeys.length === 0}
-              onClick={() => setClearConfirmationCount(settings.layoutKeys.length)}
+              onClick={() => {
+                setPresetsOpen(false);
+                setClearConfirmationCount(settings.layoutKeys.length);
+              }}
             >
               Clear all
             </button>
@@ -1000,7 +1148,7 @@ export function LayoutEditor({ settings, setSettings }: LayoutEditorProps) {
           <div className="clear-keys-confirmation" role="group" aria-label="Confirm resetting the key layout">
             <span>Replace {resetKeysConfirmationCount} configured {resetKeysConfirmationCount === 1 ? "key" : "keys"} with the default layout?</span>
             <button type="button" className="quiet-button" onClick={cancelResetKeys}>Cancel</button>
-            <button type="button" className="danger-button" onClick={resetKeys} autoFocus>Reset key layout</button>
+            <button type="button" className="danger-button" ref={(button) => button?.focus()} onClick={resetKeys} autoFocus>Reset key layout</button>
           </div>
         ) : (
           <div className="clear-keys-confirmation" role="group" aria-label="Confirm clearing all configured keys">
@@ -1010,6 +1158,67 @@ export function LayoutEditor({ settings, setSettings }: LayoutEditorProps) {
           </div>
         )}
       </div>
+
+      {presetsOpen && (
+        <section className="preset-browser" id="layout-preset-browser" aria-labelledby="layout-preset-title">
+          <div className="preset-browser-heading">
+            <div>
+              <strong id="layout-preset-title">Start from a preset</strong>
+              <span>Choose a structure for the active layout. Your global style and output settings stay unchanged.</span>
+            </div>
+            <button type="button" className="quiet-button" onClick={closePresetBrowser}>Close</button>
+          </div>
+
+          <div className="preset-grid" role="group" aria-label="Built-in layout presets">
+            {LAYOUT_PRESETS.map((preset) => (
+              <button
+                type="button"
+                className={preset.id === selectedPreset.id ? "preset-option selected" : "preset-option"}
+                key={preset.id}
+                onClick={() => choosePreset(preset.id)}
+                aria-pressed={preset.id === selectedPreset.id}
+              >
+                <span className="preset-option-heading">
+                  <span><strong>{preset.name}</strong><small>{preset.category} · {preset.keys.length} keys</small></span>
+                  <span className="preset-selection-mark" aria-hidden="true" />
+                </span>
+                <PresetPreview preset={preset} settings={settings} />
+                <span className="preset-description">{preset.description}</span>
+              </button>
+            ))}
+          </div>
+
+          {presetError && <div className="preset-error" role="alert">{presetError} Use the settings Retry action below.</div>}
+
+          {pendingPresetId === selectedPreset.id ? (
+            <div className="preset-confirmation" role="group" aria-label={`Confirm applying ${selectedPreset.name}`}>
+              <div>
+                <strong>Replace {settings.layoutKeys.length} configured {settings.layoutKeys.length === 1 ? "key" : "keys"} with {selectedPreset.name}?</strong>
+                <span>Positions, labels and sizes will change. Matching keys keep their individual appearance.</span>
+              </div>
+              <div className="preset-confirmation-actions">
+                <button type="button" className="quiet-button" onClick={cancelPresetApplication} disabled={applyingPreset}>Cancel</button>
+                <button type="button" className="danger-button" onClick={() => void applyPreset(selectedPreset)} disabled={applyingPreset} autoFocus>
+                  {applyingPreset ? "Replacing…" : "Replace layout"}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="preset-browser-actions">
+              <span>{selectedPreset.name} will replace key geometry and KPS placement.</span>
+              <button
+                type="button"
+                className="direct-edit-button"
+                ref={applyPresetButtonRef}
+                onClick={requestPresetApplication}
+                disabled={applyingPreset}
+              >
+                {applyingPreset ? "Applying…" : "Apply preset"}
+              </button>
+            </div>
+          )}
+        </section>
+      )}
 
       <div className="configured-key-list" aria-label="Configured keys">
         {settings.layoutKeys.map((key) => (
