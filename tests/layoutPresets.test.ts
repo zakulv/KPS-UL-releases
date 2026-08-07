@@ -46,6 +46,33 @@ test("the WASD preset matches the copied movement profile geometry", () => {
   );
 });
 
+test("the Mania 7K preset matches the copied profile geometry", () => {
+  const preset = LAYOUT_PRESETS.find((item) => item.id === "osu-mania-7k");
+  assert.ok(preset);
+  assert.equal(preset.keySize, 100);
+  assert.equal(preset.kpsX, 72.72727272727273);
+  assert.equal(preset.kpsY, 77.82100936292925);
+  assert.deepEqual(
+    preset.keys.map(({ physicalCode, label, x, y, width, height }) => ({
+      physicalCode,
+      label,
+      x,
+      y,
+      width,
+      height,
+    })),
+    [
+      { physicalCode: "KeyS", label: "S", x: 8.88888888888889, y: 45.55808497685374, width: null, height: null },
+      { physicalCode: "KeyD", label: "D", x: 22.22222222222222, y: 45.55808497685374, width: null, height: null },
+      { physicalCode: "KeyF", label: "F", x: 35.55555555555556, y: 45.55808497685374, width: null, height: null },
+      { physicalCode: "Space", label: "SPACE", x: 46.51162790697674, y: 79.72664870949404, width: 140, height: 100 },
+      { physicalCode: "KeyJ", label: "J", x: 57.77777777777777, y: 45.55808497685374, width: null, height: null },
+      { physicalCode: "KeyK", label: "K", x: 71.11111111111111, y: 45.55808497685374, width: null, height: null },
+      { physicalCode: "KeyL", label: "L", x: 84.44444444444444, y: 45.55808497685374, width: null, height: null },
+    ],
+  );
+});
+
 test("every preset has unique supported geometry within backend limits", () => {
   assert.equal(new Set(LAYOUT_PRESETS.map((preset) => preset.id)).size, LAYOUT_PRESETS.length);
 
